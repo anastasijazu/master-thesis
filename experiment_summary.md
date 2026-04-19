@@ -1,5 +1,3 @@
-# Full summary of our work on the master's thesis
-
 ## 1. Thesis topic and overall positioning
 
 The thesis studies **data-driven prediction and analysis of cooling energy use in telecom central office environments**, with a focus on:
@@ -868,22 +866,4 @@ The final thesis supports these conclusions:
 
 ## 32. Final thesis positioning
 
-The thesis should be presented as:
-
-- a **methodologically integrated applied study**
-- on telecom cooling analytics
-- combining:
-  - target engineering
-  - forecasting
-  - benchmark-based operational assessment
-  - intelligent control simulation
-
-It should **not** be presented as:
-- full MPC deployment
-- reinforcement-learning control
-- actuator-level plant control validation
-- proof of large cooling savings
-
-The strongest final statement is:
-
-> The thesis develops a defensible framework that bridges reconstructed cooling-demand telemetry, forecast-based benchmarking, and intelligent control simulation in a real telecom central office. It shows that broad reducible cooling demand is not evident at the selected site, but that a small number of bounded and context-aware intervention opportunities can still be identified using forecast-informed intelligent control logic.
+The thesis develops a defensible framework that bridges reconstructed cooling-demand telemetry, forecast-based benchmarking, and intelligent control simulation in a real telecom central office. It shows that broad reducible cooling demand is not evident at the selected site, but that a small number of bounded and context-aware intervention opportunities can still be identified using forecast-informed intelligent control logic.
