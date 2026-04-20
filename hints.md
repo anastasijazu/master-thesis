@@ -1,0 +1,5 @@
+Research gap.
+Existing telecom studies are strong in cooling-system monitoring, KPI design, and diagnosis, but provide less direct support for reconstructing a usable hourly cooling-demand target from fragmented cumulative telemetry, forecasting that target at short horizons, and translating forecast outputs into benchmark-based intelligent supervisory control logic. Forecasting studies often assume ready-made targets and stop at predictive accuracy, whereas advanced control studies usually assume richer state feedback, manipulated variables, and validated control environments than are available in the present telecom case.
+
+Novelty.
+The novelty of the thesis lies not in proposing a new forecasting or control algorithm, but in developing an integrated analytical framework for a real telecom central office that combines target engineering from fragmented cumulative cooling telemetry, comparative short-horizon forecasting under rolling-origin validation, expected-versus-actual benchmark analysis, and forecast-informed intelligent supervisory control simulation on historical operation.
