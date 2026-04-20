@@ -1,4 +1,6 @@
-## 1. Thesis topic and overall positioning
+# Experiment summary
+
+## 1. Thesis topic and positioning
 
 The thesis studies **data-driven prediction and analysis of cooling energy use in telecom central office environments**, with a focus on:
 
@@ -18,7 +20,7 @@ but:
 
 - **a methodologically integrated applied study** combining target engineering, forecasting, benchmark-based operational assessment, and intelligent control simulation under real telemetry constraints.
 
-This positioning is consistent with the literature review and with the available telemetry.
+This positioning is consistent with both the final analytical workflow and the abstract, which states that rule-based operational strategies are evaluated using historical datasets and model predictions to analyse potential improvements in cooling energy efficiency. :contentReference[oaicite:1]{index=1}
 
 ---
 
@@ -28,21 +30,23 @@ The final selected site is:
 
 - **790ZHB**
 
-The broader DB-related structures and metadata layers considered during exploration included:
+The broader DB-related source structures considered during discovery included:
 
 - `enmos_datapoint`
 - `datapoint`
 - `measurement`
 - `measurement_all`
 
-The study did not assume all nominal signals were usable. Instead, it first checked:
-- availability,
-- temporal continuity,
-- meaning,
-- completeness,
-- and whether signals were suitable for target construction, forecasting, or control context.
+The site-selection workflow used lightweight metadata and support information before heavy extraction. The final recommended site was **790ZHB**, because it had the strongest cooling- and energy-related signal environment and the best combined metadata/support score. In the notebook, 790ZHB had **567 ENMOS signals**, including **515 cooling-related** and **548 energy-related** signals, compared with much lower richness for the next candidate 790LIM. :contentReference[oaicite:2]{index=2}
 
-A separate raw signal listing later confirmed that there are many available signals, but most are still power-like telemetry and do not provide a rich actuator/state layer. That supported the decision to keep the thesis at the supervisory-control level.
+Signal mapping then showed:
+- `datapoint_total = 223`
+- `enmos_total = 567`
+- `matched_signals_inner = 223`
+- `datapoint_without_match = 0`
+- `enmos_without_match = 344`
+
+This justified anchoring the experiment on the datapoint-mapped signal set.
 
 ---
 
@@ -66,13 +70,16 @@ The target pipeline was:
 3. difference cumulative values into interval consumption,
 4. clip negative / implausible steps,
 5. aggregate retained hourly increments,
-6. produce final hourly cooling-demand target `y`.
+6. apply light quantile clipping,
+7. produce final hourly cooling-demand target `y`.
 
-This led to the key interpretation that the target is:
+The final target was clipped at the **1st and 99th percentiles** after differencing and aggregation.
+
+This leads to the final interpretation that the target is:
 
 > **an engineered hourly cooling-demand variable reconstructed from fragmented cumulative subsystem telemetry**
 
-and this is a central methodological contribution of the thesis, not a hidden preprocessing detail.
+and this is one of the core methodological contributions of the thesis.
 
 ---
 
@@ -90,31 +97,32 @@ The main dataset contains:
 - selected external weather variables
 - time/context variables
 
-This is the preferred final dataset because it gives the best balance of:
-- predictive usefulness,
-- interpretability,
-- and reduced circularity risk.
-
 ### Compare dataset
-The compare dataset extends the main dataset with sibling cooling-related proxies to test whether target-adjacent variables change the forecasting and benchmarking results substantially.
+The compare dataset extends the main dataset with sibling cooling-related proxy signals to test whether target-adjacent variables materially improve forecasting.
 
 ### Main conclusion from this comparison
-The sibling-expanded compare dataset changed results only **marginally**, which became an important argument that the selected 5-signal target is **sufficiently representative** and not severely too narrow.
+The sibling-expanded compare dataset improved RMSE only **marginally** relative to the main dataset. In the Random Forest lagged comparison:
 
-This became one of the strongest arguments against the concern that small estimated overcooling might be only an artifact of an overly narrow target.
+- `compare` RMSE = **261.214454**
+- `main` RMSE = **261.884303**
+
+This improvement was too small to justify the reduced interpretability and higher target-proximity risk. Therefore, the **main dataset** remained the preferred analytical basis. :contentReference[oaicite:3]{index=3}
+
+This also became an important argument that the selected 5-signal target is **sufficiently representative** and not severely too narrow.
 
 ---
 
 ## 5. Weather and contextual variables
 
-External weather was retained because internal meteo-like signals were incomplete or unsuitable as direct replacements.
+External weather was retained because the internal meteo candidates were too sparse for direct use as reliable final predictors.
 
-The external variables used included:
+The retained external weather variables in the final main dataset were:
+
 - `wx_temp_2m`
 - `wx_dewpoint_2m`
 - `wx_shortwave_rad`
-- `wx_relhum_2m`
-- `wx_cloudcover`
+- `wx_rh_2m`
+- `wx_cloud_cover`
 
 Time/context variables included:
 - `hour`
@@ -122,79 +130,77 @@ Time/context variables included:
 - `month`
 - `is_weekend`
 
----
+The final weather correlations with the target in `dataset_main` were:
 
-## 6. Internal temperature proxy
+- `wx_temp_2m`: **0.850695**
+- `wx_dewpoint_2m`: **0.813200**
+- `wx_shortwave_rad`: **0.409636**
+- `wx_cloud_cover`: **-0.259317**
+- `wx_rh_2m`: **-0.412941**
 
-A sparse internal temperature signal was first excluded because of missingness, but later re-examined.
-
-### What we found
-It was not just a once-daily reading.  
-It had roughly **2000 non-null values** in 2025 and appeared in sparse intra-day blocks.
-
-This led to a reinterpretation:
-- it is **not** a normal hourly weather variable,
-- but it can be treated as a **slow internal thermal-state signal**.
-
-### How it was handled
-It was converted into:
-- `internal_temp_proxy`
-
-The pipeline was:
-1. extract the sparse raw signal,
-2. align it to hourly timestamps,
-3. fix timezone mismatch,
-4. interpolate cautiously,
-5. forward/back fill,
-6. retain it as a slow internal thermal-state proxy.
-
-This proxy was then added into the main feature set.
-
-### Important interpretation
-It was **not** treated as a normal ambient temperature measure.  
-It was treated as a contextual internal-state variable.
-
-Later feature-importance analysis showed that `internal_temp_proxy` became one of the strongest non-lag contextual features, which supported its inclusion.
+These results support the interpretation that cooling demand depends on both environmental conditions and internal operational behavior. :contentReference[oaicite:4]{index=4}
 
 ---
 
-## 7. Final 2025 main dataset size
+## 6. Internal temperature branch: final decision
 
-The final main dataset dimensions were:
+A sparse internal temperature signal was reconsidered during the analysis and compared against external weather. The comparison later showed a strong relationship with external temperature:
 
-- **8603 rows**
-- **46 columns**
-- time range: **2025-01-01 01:00:00** to **2025-12-31 23:00:00**
+- `corr(internal_temp, external_temp) = 0.958923`
+- `mae = 1.483250`
 
-After lag construction, the final lagged table used for forecasting and control became:
+This supported the conclusion that the internal signal tracked the external temperature context too closely and did **not** provide sufficiently distinct internal-state information for the final main forecasting specification. In the notebook text, it was explicitly concluded that it was **not retained in the final main forecasting specification** and treated, at most, as a sensitivity variable rather than a core predictor. :contentReference[oaicite:5]{index=5}
 
-- **8435 rows**
-- start: **2025-01-08 01:00:00**
-- end: **2025-12-31 23:00:00**
+Therefore, the final thesis story should **remove the internal-temperature branch from the main analytical pipeline**.
+
+---
+
+## 7. Final 2025 dataset size
+
+After final cleaning:
+
+- `dataset_main`: **8603 rows × 46 columns**
+- `dataset_compare`: **8603 rows × 69 columns**
+
+The final main dataset spans:
+
+- **2025-01-01 01:00:00**
+- to **2025-12-31 23:00:00**
+
+After lag construction, the final lagged forecasting/control table is:
+
+- `lagged_df`: **8435 rows × 54 columns**
+- date range: **2025-01-08 01:00:00** to **2025-12-31 23:00:00**
+
+:contentReference[oaicite:6]{index=6}
 
 ---
 
 ## 8. Exploratory data analysis
 
-EDA established that the cooling target is:
+EDA showed that the cooling target is:
 
 - strongly seasonal,
 - strongly persistence-driven,
 - non-Gaussian,
-- and more variable in the warm season.
+- and more variable during the warm season.
 
-The target behaves as a persistence-dominated operational process rather than as a simple direct weather response.
+The monthly target distribution confirmed:
+- lower winter demand,
+- rising spring demand,
+- elevated summer levels,
+- and a decrease toward late autumn and winter.
 
-External weather and internal operational variables both contribute explanatory value, but lagged target history remains dominant.
+The target also showed strong nonlinear relationships with outside temperature and dew point, supporting the need for both lagged and contextual predictors. :contentReference[oaicite:7]{index=7}
 
 ---
 
 ## 9. Forecasting pipeline
 
-The forecasting pipeline was built in multiple stages.
+The forecasting pipeline was built in several stages.
 
-### Initial family benchmark
-Initial models included:
+### Initial benchmark layer
+The first benchmark on a single chronological split included:
 - naive persistence
 - seasonal naive
 - ARIMA
@@ -203,10 +209,20 @@ Initial models included:
 - Random Forest
 - LSTM
 
-A major finding was that naive persistence is already very competitive at the 1-hour horizon, confirming that the problem is strongly persistence-driven.
+Results:
 
-### Final lagged setup
-A richer supervised setup was then built with explicit lagged target features:
+- `Naive`: MAE **180.213829**, RMSE **310.964207**
+- `Random Forest`: MAE **414.638606**, RMSE **513.386080**
+- `Linear Regression`: MAE **499.839085**, RMSE **641.596075**
+- `Seasonal Naive`: MAE **401.951191**, RMSE **767.137918**
+- `SARIMA`: MAE **796.387167**, RMSE **884.804906**
+- `ARIMA`: MAE **1413.108501**, RMSE **1463.849270**
+- `LSTM`: MAE **2247.237316**, RMSE **2338.217299**
+
+This showed that naive persistence was already a very strong reference, and that the problem is strongly persistence-driven. :contentReference[oaicite:8]{index=8}
+
+### Final lagged forecasting setup
+A richer supervised setup was then built using lagged target features:
 
 Final lag list:
 - `1`
@@ -222,17 +238,55 @@ Models compared in the lagged setup included:
 - Linear Regression + lags
 - Random Forest + lags
 - Gradient Boosting + lags
-- LSTM
-- ARIMAX / SARIMAX with exogenous inputs
+- LSTM multivariate
+- SARIMAX + exogenous weather
 
-### Main validation stage
-The final model choice was based on **rolling-origin backtesting**, which became the strongest and most defensible validation stage.
+On the single chronological lagged benchmark:
+
+- `Random Forest + lags`: MAE **186.268427**, RMSE **261.884303**
+- `Naive`: MAE **178.606995**, RMSE **310.448222**
+- `Gradient Boosting + lags`: MAE **258.247380**, RMSE **323.813578**
+- `Linear Regression + lags`: MAE **288.075342**, RMSE **355.100944**
+- `LSTM multivariate (scaled)`: MAE **969.879350**, RMSE **1026.151097**
+
+This showed that adding explicit lag structure substantially improved the supervised models. :contentReference[oaicite:9]{index=9}
 
 ---
 
-## 10. Final forecasting model choice
+## 10. Final forecasting model selection
 
-The final selected model is:
+The final model choice was based on **rolling-origin backtesting**, which became the strongest and most defensible validation stage.
+
+### Rolling-origin summary
+Average fold performance:
+
+- `Gradient Boosting + lags`
+  - `MAE_mean = 228.051749`
+  - `RMSE_mean = 306.739060`
+
+- `Random Forest + lags`
+  - `MAE_mean = 222.487411`
+  - `RMSE_mean = 308.307356`
+
+- `Naive`
+  - `MAE_mean = 254.359444`
+  - `RMSE_mean = 369.302055`
+
+- `Linear Regression + lags`
+  - `MAE_mean = 287.317139`
+  - `RMSE_mean = 374.264193`
+
+- `SARIMAX + exog`
+  - `MAE_mean = 604.428176`
+  - `RMSE_mean = 741.967120`
+
+Pooled metrics confirmed the same ranking:
+
+- `Gradient Boosting + lags`: `RMSE_pooled = 316.644365`
+- `Random Forest + lags`: `RMSE_pooled = 319.491879`
+- `Naive`: `RMSE_pooled = 382.450216`
+
+Therefore, the final selected forecasting model is:
 
 - **Gradient Boosting with lagged target features**
 
@@ -240,41 +294,29 @@ The strongest secondary benchmark is:
 
 - **Random Forest with lagged target features**
 
-### Why GB remained final
-Final model selection was based on the main rolling-origin validation stage, not only on later interpretive diagnostics.
-
-### Why RF was retained
-Random Forest remained:
-- highly competitive,
-- and more interpretable in feature-group ablation.
-
-So the final logic became:
-- **GB** = final benchmark model
-- **RF** = interpretive and robustness benchmark
+Random Forest remained highly competitive and more interpretable, but Gradient Boosting performed best overall under the main rolling-origin selection criterion. :contentReference[oaicite:10]{index=10}
 
 ---
 
-## 11. Forecasting metrics and interpretation
+## 11. Forecasting quality
 
-Final forecast metrics shown later for the chosen model were:
+The final forecast-quality summary for the selected benchmark pipeline was:
 
-- **MAE = 117.413399**
-- **RMSE = 166.253246**
+- **MAE = 115.062724**
+- **RMSE = 161.786664**
 - **Mean actual = 3377.843983**
-- **CVRMSE = 4.921875%**
-- **NMAE = 3.475986%**
-- **R² = 0.984690**
+- **CVRMSE = 4.789643%**
+- **NMAE = 3.406395%**
+- **R² = 0.985501**
 
 ### Interpretation
-These numbers mean:
-- forecast error is small relative to the target scale,
-- RMSE is about **4.9% of mean hourly cooling demand**,
-- average absolute error is about **3.5% of mean hourly demand**,
-- and the model explains about **98.5% of target variance**.
+These values mean that:
+- forecast error is small relative to the scale of the target,
+- RMSE is about **4.8% of mean hourly cooling demand**,
+- average absolute error is about **3.4% of mean hourly demand**,
+- and the benchmark explains about **98.6% of target variance**.
 
-This became the best way to express forecasting quality.
-
-We explicitly decided **not** to say “95% accurate,” because that would be less academically precise than CVRMSE, NMAE, and R².
+This became the preferred way to express forecasting quality, instead of using a vague “95% accurate” phrasing. :contentReference[oaicite:11]{index=11}
 
 ---
 
@@ -290,121 +332,152 @@ Feature interpretation used:
 The dominant feature was:
 - `y_lag_1`
 
-This confirmed that the short-term cooling-demand problem is heavily persistence-driven.
+This confirmed that the problem is highly persistence-driven.
 
-### After excluding `y_lag_1`
-Strong contextual variables included:
+### Secondary predictors
+After excluding `y_lag_1`, the strongest secondary variables included:
+
+For Random Forest:
+- `wx_temp_2m`
 - `90`
 - `100`
 - `14`
 - `72`
-- `internal_temp_proxy`
 - longer lags
-- selected internal operational features
+- several internal operational signals
 
-The addition of `internal_temp_proxy` changed the contextual ranking substantially and showed that it carries meaningful thermal context.
+For Gradient Boosting permutation importance:
+- `90`
+- `wx_temp_2m`
+- `72`
+- `100`
+- `35`
+- `y_lag_12`
+- `14`
+- `187`
+- `171`
+- `108`
+
+### Grouped importance
+For Gradient Boosting:
+- lagged target: **387.803936**
+- internal operational: **84.769746**
+- weather: **19.863015**
+- time: **0.634776**
+
+This confirmed that:
+- lagged target history dominates,
+- internal operational features form the strongest secondary group,
+- weather contributes useful but smaller additional value,
+- and time features remain weak. :contentReference[oaicite:12]{index=12}
 
 ### Feature-group ablation
-Ablation groups included:
-- `lags_only`
-- `lags_plus_weather`
-- `lags_plus_operational`
-- `lags_weather_operational`
-- `lags_weather_operational_siblings`
+Random Forest ablation results:
 
-#### RF ablation
-RF suggested that:
-- operational and weather context improve prediction over lags alone
-- siblings add only marginal value
+- `lags_weather_operational_siblings`: RMSE **261.193115**
+- `lags_weather_operational`: RMSE **261.874440**
+- `lags_plus_operational`: RMSE **273.307318**
+- `lags_only`: RMSE **296.699644**
+- `lags_plus_weather`: RMSE **305.706284**
 
-#### GB ablation
-GB suggested a stronger reliance on lag structure and less benefit from wider contextual features.
+This showed:
+- lagged features alone are not sufficient for best performance,
+- internal operational signals are very important,
+- weather adds further refinement,
+- sibling proxies add only a marginal extra gain.
 
-### Interpretation
-This did **not** invalidate GB as final model.  
-It simply meant:
-- GB is more compact and lag-driven,
-- RF is more useful for understanding grouped feature contributions.
+Gradient Boosting ablation under a fixed split showed that `lags_only` performed best there, but because this was less consistent with the broader interpretation and the main rolling-origin results, the thesis retained:
+- **RF ablation** as the primary grouped-comparison tool,
+- and **GB permutation importance** as the main interpretation tool for the final benchmark model. :contentReference[oaicite:13]{index=13}
 
 ---
 
 ## 13. Benchmarking actual vs expected cooling
 
-The final selected GB model was used to generate:
-- expected cooling,
-- bias-corrected predictions,
-- and benchmark residuals.
+The final selected Gradient Boosting model was used to generate expected cooling demand, then bias-corrected for residual benchmarking.
 
-### Full-year benchmarking
-After bias correction:
-- total actual cooling and total expected cooling were effectively equal,
-- annual net difference was approximately zero.
+### Full-year summary
+- `total_actual = 2.849211e+07`
+- `total_predicted_bias_corrected = 2.849211e+07`
+- `net_difference_bias_corrected ≈ 0`
 
 ### Interpretation
 There is **no evidence of large-scale systematic annual overcooling**.
 
-### Warm-season benchmarking
-For the warm season:
-- raw excess above expected cooling ≈ **1.34%**
-- reduced-cooling share ≈ **1.36%**
-- net warm-season balance ≈ **-0.02%**
+### Warm-season summary
+- `warm_excess_pct = 1.340705%`
+- `warm_reduced_pct = 1.360980%`
+- `warm_net_pct = -0.020275%`
 
-### Interpretation
-Even in the warm season, the site remains broadly balanced around expected demand.
+This means the warm season is also broadly balanced around expected cooling demand. :contentReference[oaicite:14]{index=14}
+
+A consistency check using Random Forest gave very similar warm-season results:
+- `warm_excess_pct = 1.511112%`
+- `warm_reduced_pct = 1.472109%`
+- `warm_net_pct = 0.039003%`
+
+So the operational benchmarking conclusion was stable across the two near-tied tree-based models. :contentReference[oaicite:15]{index=15}
 
 ---
 
-## 14. Conservative reduction-potential logic
+## 14. Conservative reduction-potential analysis
 
-The study did not treat every positive residual as directly reducible waste.  
-It introduced conservative filters:
+The study did not treat every positive residual as reducible energy. It introduced conservative filters:
 - meaningful excess threshold,
+- non-critical load filter,
 - persistence,
-- contextual screening,
 - bounded action caps.
 
-At one stage of the reduction funnel:
-- warm-season hours = **3537**
-- positive residual hours = **1832**
-- meaningful excess hours = **458**
-- eligible persistent hours = **38**
+### Warm-season filtering funnel
+- `warm_hours_total = 3537`
+- `positive_residual_hours = 1832`
+- `meaningful_excess_hours = 458`
+- `control_eligible_hours = 38`
 
-This led to bounded scenario estimates:
-- raw warm-season excess = **1.34%**
-- persistent 5% cap = **0.046%**
-- persistent 10% cap = **0.057%**
+### Reduction scenarios
+- `raw_warm_excess = 1.340705%`
+- `persistent_5pct_cap = 0.046356%`
+- `persistent_10pct_cap = 0.057228%`
 
-### Interpretation
-Once supervisory realism is introduced, the plausible intervention margin becomes very small.
+### Sensitivity analysis
+Across different thresholds and persistence rules, the estimated reduction potential stayed small. For example:
+
+- at `0.75 residual quantile`, `0.8 load quantile`, `2h persistence`, `5% cap`:
+  - **38 eligible hours**
+  - **0.04635%** of warm-season actual
+
+- at stricter settings such as `0.90`, `3h`, `5% cap`:
+  - **0 hours**
+  - **0.00000%**
+
+This showed that once supervisory realism is imposed, plausible intervention potential becomes very small. :contentReference[oaicite:16]{index=16}
 
 ---
 
 ## 15. Intelligent control framing
 
-The control section was explicitly framed as:
+The control section is explicitly framed as:
 
 > **forecast-informed intelligent control simulation**
-
-This was an important wording shift.
-
-It is not:
-- full MPC,
-- reinforcement learning,
-- or actuator-level validated control.
 
 It is:
 - forecasting-model output translated into supervisory decision logic,
 - then simulated on historical data,
 - with explicit context and risk filtering.
 
-We discussed multiple times that this is the strongest defensible control level supported by the available telemetry.
+It is **not**:
+- full MPC,
+- reinforcement learning,
+- or actuator-level validated control.
+
+This is the highest defensible control level supported by the available telemetry and remains consistent with the abstract, which says that rule-based operational strategies are evaluated using historical datasets and model predictions to analyse potential improvements in cooling energy efficiency. :contentReference[oaicite:17]{index=17}
 
 ---
 
 ## 16. Why not full MPC or RL
 
 We clarified that full MPC would require:
-- validated dynamic process model,
+- a validated dynamic process model,
 - explicit manipulated variables,
 - richer internal thermal-state feedback,
 - physical constraints,
@@ -417,13 +490,13 @@ We also clarified why reinforcement learning was not used:
 - no actuator-level response model,
 - no action-outcome label structure.
 
-This became part of the planned discussion section.
+Therefore, the study remains at the forecast-informed supervisory-control level.
 
 ---
 
 ## 17. Why there is no ground-truth control accuracy
 
-We clarified multiple times that forecasting and control are validated differently.
+Forecasting and control are validated differently.
 
 ### Forecasting
 Has a true observed target:
@@ -444,144 +517,217 @@ Therefore, control is not evaluated by “accuracy,” but by:
 - risk-awareness,
 - and robustness.
 
-This became an important defense point.
+This became an important defense point and should remain explicit in the discussion section.
 
 ---
 
-## 18. Bidirectional benchmark interpretation
+## 18. Six-hour-ahead sensitivity check
 
-We discussed whether the framework should identify only reduction opportunities or also possible insufficient-cooling periods.
+Because the literature suggests that exogenous/contextual structure may become more important at longer forecast horizons, a limited six-hour-ahead sensitivity check was performed.
 
-The final conclusion was:
-- the proposal/abstract do **not** force reduction-only logic,
-- the benchmark framework can be interpreted bidirectionally,
-- but the under-expected side should be treated more cautiously.
+Under rolling-origin validation, however, the 6-hour machine-learning models did **not** outperform naive:
 
-So the final interpretation became:
+- `Naive_6h`
+  - `MAE_mean = 428.172107`
+  - `RMSE_mean = 644.081329`
+  - `CVRMSE_mean = 21.193645`
+  - `R2_mean = -0.136386`
+
+- `GB_6h`
+  - `MAE_mean = 597.511387`
+  - `RMSE_mean = 730.251800`
+  - `CVRMSE_mean = 26.941288`
+  - `R2_mean = -1.795989`
+
+- `RF_6h`
+  - `MAE_mean = 668.018085`
+  - `RMSE_mean = 771.431043`
+  - `CVRMSE_mean = 28.576325`
+  - `R2_mean = -2.176720`
+
+So the six-hour-ahead branch was **not retained as a main thesis result**.
+
+However, the 6-hour Random Forest feature-importance pattern suggested stronger contextual dependence, especially for broader contextual variables, which was conceptually consistent with the literature’s horizon-sensitive expectation.
+
+Therefore:
+- the final thesis remains centered on the **one-hour-ahead** case,
+- while the six-hour result is treated, at most, as a limited sensitivity check.
+
+---
+
+## 19. Bidirectional benchmark interpretation
+
+The benchmark framework was extended conceptually in both directions:
 
 - **positive residuals** → candidate excess cooling / reduction side
 - **negative residuals** → candidate insufficient-cooling diagnostics
 
-We implemented this as a diagnostic extension rather than as a fully validated increase controller.
+The under-expected side was treated more cautiously and not interpreted as direct increase commands.
 
 ### Under-expected diagnostic result
-The pipeline found:
-- `negative_residual_hours = 4327`
-- `meaningful_under_hours = 2164`
-- `persistent_under_hours = 854`
-- but `candidate_insufficient_cooling_hours = 0`
+The final diagnostic found:
 
-### Interpretation
-Below-expected cooling does occur often, but **not** under the simultaneous high-risk conditions required by the strict diagnostic flag. So the data do **not** support a strong claim of systematic insufficient cooling.
+- `negative_residual_hours = 4305`
+- `meaningful_under_hours = 2153`
+- `persistent_under_hours = 848`
+- `candidate_insufficient_cooling_hours = 18`
 
-This became a strong finding because it made the benchmark-control framework balanced rather than one-sided.
+This means that below-expected cooling does occur, but only a very small subset appears under the strict combination of:
+- warm season,
+- allowed hour,
+- persistent under-expected residual,
+- high load,
+- high thermal state,
+- high-risk operating mode.
+
+So the data do **not** support a strong claim of systematic insufficient cooling. :contentReference[oaicite:18]{index=18}
 
 ---
 
-## 19. Operational proxy selection for intelligent control
+## 20. Operational proxy selection for intelligent control
 
-Several proxies were tested:
+Several candidate operational proxies were tested:
 - `179`
 - `188`
 - `80`
 - `90`
 
-Initially, `80` and `188` had the strongest raw correlation with actual cooling (~0.85), but they proved less useful as supervisory context variables because they behaved too much like direct cooling-state indicators and often collapsed S2/S3 into near-zero or trivial results.
+These were not part of the original fixed forecasting feature pool. They were manually shortlisted from the broader hourly telemetry exploration as a **control-specific candidate set**.
 
-The final proxy retained for intelligent control became:
+### Final proxy comparison in the revised validation branch
+A later proxy sensitivity check gave:
+
+- `179`
+  - `S2_active_hours = 30`
+  - `S2_reduction_pct = 0.043542`
+  - `S3_active_hours = 30`
+  - `S3_reduction_pct = 0.041931`
+
+- `188`
+  - `S2_active_hours = 9`
+  - `S2_reduction_pct = 0.010786`
+  - `S3_active_hours = 5`
+  - `S3_reduction_pct = 0.005317`
+
+- `80`
+  - `S2_active_hours = 9`
+  - `S2_reduction_pct = 0.011077`
+  - `S3_active_hours = 5`
+  - `S3_reduction_pct = 0.005759`
+
+- `90`
+  - `S2_active_hours = 23`
+  - `S2_reduction_pct = 0.035380`
+  - `S3_active_hours = 15`
+  - `S3_reduction_pct = 0.024061`
+
+The final retained load proxy was:
 
 - **`179`**
 
-because it gave the strongest balance of:
+because it provided the strongest balance of:
 - contextual usefulness,
-- stable S2/S3 behavior,
+- stable supervisory behavior,
 - and interpretable operating-mode separation.
 
-This was an important conceptual shift:
-proxy choice was based on **supervisory usefulness**, not only on raw predictive correlation.
+This is why proxy selection should be described as **control-specific candidate screening**, not as part of the original fixed modeling pool.
 
 ---
 
-## 20. Intelligent control state design
+## 21. Intelligent control state design
 
-The intelligent control state layer uses:
+The final control-state layer uses:
 - `residual_bc`
-- load proxy
-- `internal_temp_proxy`
+- selected load proxy (`179`)
 - warm-season filter
 - allowed-hour filter
-- persistence logic
+- persistence of above-expected demand
+- thermal-context score from external weather
 - operating modes
 
-We later revised the thermal/risk design further in response to feature-importance and clustering results.
+The final thermal-context score is data-driven and based on:
+- `wx_temp_2m`
+- `wx_dewpoint_2m`
 
-The candidate operational load proxies used in the intelligent-control section were not drawn arbitrarily from the final compact forecasting dataset. They were manually shortlisted from the broader hourly telemetry exploration after the main forecasting dataset had already been fixed. This shortlist was intended specifically for the control-design stage, where one additional operational-context variable was needed. The tested candidates were selected because they had plausible operational meaning, sufficient availability, and potential value as contextual indicators of site burden. The final proxy was then chosen based on supervisory usefulness, including operating-mode separation and control behavior, rather than on raw predictive correlation alone.
+using PCA.
 
-### State summary from one major control version
-At one point:
-- warm-season hours = **3537**
-- allowed-hour hours = **3159**
-- positive residual hours = **4130**
-- meaningful excess hours = **1033**
-- persistent excess hours = **213**
+### Final state summary
+- `warm_season_hours = 3537`
+- `allowed_hour_hours = 3159`
+- `positive_residual_hours = 4130`
+- `meaningful_excess_hours = 1033`
+- `persistent_excess_hours = 213`
+- `thermal_pca_explained_variance = 0.943328`
 
-State counts included:
-- load state: `LOW = 4816`, `MEDIUM = 755`, `HIGH = 2864`
-- excess state: `NONE = 4305`, `MILD = 3097`, `STRONG = 1033`
+State counts:
+- `load_state_counts = {'HIGH': 2858, 'MEDIUM': 2793, 'LOW': 2784}`
+- `thermal_state_counts = {'HIGH': 2868, 'LOW': 2784, 'MEDIUM': 2783}`
+- `excess_state_counts = {'NONE': 4305, 'MILD': 3097, 'STRONG': 1033}`
 
----
-
-## 21. Operating modes and high-risk definition
-
-We spent a lot of time clarifying what `HIGH_RISK` means and how to justify it.
-
-### Important clarification
-`HIGH_RISK` does **not** mean directly observed thermal failure.  
-It means:
-
-> a data-driven supervisory operating context with comparatively higher load and/or thermal burden, in which cooling reduction is less defensible.
-
-### How high-risk was built
-Originally, risk assignment used a cluster-level ranking based on:
-- `load_proxy_mean`
-- `thermal_context_mean`
-
-We noticed a problem where `MEDIUM_RISK` and `HIGH_RISK` could tie under a simple average-rank approach.
-
-So the recommendation became:
-- rank clusters primarily by **load burden**
-- use thermal context as secondary refinement
-- use clustering for empirical structure, but risk labels for conservative filtering
-
-We also created visualizations to show:
-- how clusters are formed,
-- how cluster-level risk is ranked,
-- and how LOW / MEDIUM / HIGH risk differ in load proxy and thermal context.
+:contentReference[oaicite:19]{index=19}
 
 ---
 
-## 22. K-means cluster validation
+## 22. Operating modes and high-risk definition
 
-We tested:
+Operating modes were discovered with K-means using:
+
+- `load_proxy`
+- `thermal_context_score`
+- `hour`
+
+### K selection
+Candidate K values were tested:
+
 - `K = 2`
 - `K = 3`
 - `K = 4`
 - `K = 5`
 
-Diagnostics used:
-- silhouette score
-- Calinski–Harabasz score
-- Davies–Bouldin score
+Diagnostic results were:
 
-At one stage, `K = 3` gave the best overall clustering quality and remained the preferred choice.
+- `K=2`
+  - silhouette **0.319056**
+  - Calinski–Harabasz **3814.389019**
+  - Davies–Bouldin **1.280317**
 
-This allowed us to defend that the number of clusters was **not purely hardcoded**, but checked against diagnostics.
+- `K=3`
+  - silhouette **0.366267**
+  - Calinski–Harabasz **4683.768571**
+  - Davies–Bouldin **1.076463**
+
+- `K=4`
+  - silhouette **0.354662**
+  - Calinski–Harabasz **5068.663835**
+  - Davies–Bouldin **0.909915**
+
+- `K=5`
+  - silhouette **0.368762**
+  - Calinski–Harabasz **5461.673664**
+  - Davies–Bouldin **0.882785**
+
+Although some metrics improved further at larger K, the final rule was designed to avoid over-fragmentation and to preserve interpretability. The final selected value remained:
+
+- **`K = 3`**
+
+because it was within 95% of the best silhouette and supported the clearest interpretable LOW / MEDIUM / HIGH risk structure. :contentReference[oaicite:20]{index=20}
+
+### High-risk definition
+`HIGH_RISK` does **not** mean directly observed failure. It means:
+
+> a data-driven supervisory operating context with comparatively higher load and thermal burden, in which cooling reduction is less defensible.
+
+Risk labels were assigned after clustering based on cluster-level burden:
+- mean load proxy
+- mean thermal-context score
+
+These labels are therefore supervisory categories, not direct physical-failure states.
 
 ---
 
 ## 23. Final intelligent control strategy family
 
-The final strategy family was:
+The final strategy family is:
 
 ### `B0_simple_threshold`
 A simple threshold-based baseline:
@@ -599,209 +745,160 @@ Uses:
 
 ### `S2_load_aware`
 Adds:
-- load proxy
+- selected load proxy
 - allowed-hour filtering
 
 ### `S3_load_mode_aware`
 Adds:
-- mode awareness
+- operating-mode awareness
 - more refined action logic
 
-Control states remained:
+Control states:
 - `PROTECT`
 - `NORMAL`
 - `RELAXED_1`
 - `RELAXED_2`
 
 Action mapping:
-- `PROTECT` = 0%
-- `NORMAL` = 0%
-- `RELAXED_1` = 5%
-- `RELAXED_2` = 10%
+- `PROTECT = 0%`
+- `NORMAL = 0%`
+- `RELAXED_1 = 5%`
+- `RELAXED_2 = 10%`
 
 ---
 
-## 24. Main intelligent control results (before internal temperature revision)
+## 24. Main intelligent control results
 
-An earlier major control version gave:
+### Final direct strategy-family results in the notebook
+The main strategy-family run in Section F gave:
 
-### `B0_simple_threshold`
-- active hours = **496**
-- reduction = **0.641%**
+- `S1_forecast_only`
+  - active hours = **106**
+  - reduction = **0.158979%**
 
-### `S1_forecast_only`
-- active hours = **115**
-- reduction = **0.178%**
+- `S2_load_aware`
+  - active hours = **25**
+  - reduction = **0.035591%**
 
-### `S2_load_aware`
-- active hours = **25**
-- reduction = **0.0356%**
+- `S3_load_mode_aware`
+  - active hours = **6**
+  - reduction = **0.010249%**
 
-### `S3_load_mode_aware`
-- active hours = **5**
-- reduction = **0.0090%**
+This is the cleanest final strategy-family result directly tied to the final F-section pipeline. :contentReference[oaicite:21]{index=21}
 
-This was already a very good demonstration of the basic hierarchy:
-- simple logic → more aggressive
-- richer logic → more selective and safer
+### Validation package results
+In the validation package, the shared-condition comparison gave:
 
----
+- `B0_simple_threshold`
+  - active hours = **497**
+  - reduction = **0.631270%**
 
-## 25. Main intelligent control results after adding internal temperature proxy
+- `S1_forecast_only`
+  - active hours = **106**
+  - reduction = **0.158979%**
 
-After adding `internal_temp_proxy` into the contextual design, the final validation results shifted.
+- `S2_load_aware`
+  - active hours = **25**
+  - reduction = **0.035591%**
 
-The final validated strategy comparison became:
-
-### `B0_simple_threshold`
-- active hours = **496**
-- reduction = **0.641%**
-- mean action intensity = **5.0%**
-- low-risk action fraction = **0.088710**
-- medium-risk action fraction = **0.852823**
-- high-risk action fraction = **0.058468**
-- avoided high-risk hours = **0**
-
-### `S1_forecast_only`
-- active hours = **115**
-- reduction = **0.178%**
-- mean action intensity = **10.0%**
-- low-risk action fraction = **0.113043**
-- medium-risk action fraction = **0.852174**
-- high-risk action fraction = **0.034783**
-- avoided high-risk hours = **0**
-
-### `S2_load_aware`
-- active hours = **47**
-- reduction = **0.073%**
-- mean action intensity = **10.0%**
-- low-risk action fraction = **0.127660**
-- medium-risk action fraction = **0.872340**
-- high-risk action fraction = **0.000000**
-- avoided high-risk hours = **200**
-
-### `S3_load_mode_aware`
-- active hours = **47**
-- reduction = **0.066%**
-- `RELAXED_1 = 41`
-- `RELAXED_2 = 6`
-- mean action intensity = **5.638298%**
-- low-risk action fraction = **0.127660**
-- medium-risk action fraction = **0.872340**
-- high-risk action fraction = **0.000000**
-- avoided high-risk hours = **200**
+- `S3_load_mode_aware`
+  - active hours = **6**
+  - reduction = **0.010249%**
 
 ### Interpretation
-This became one of the strongest final results.
+The hierarchy is clear and defensible:
 
-The hierarchy remained:
-- baseline most aggressive,
-- S1 selective,
-- S2 and S3 much safer,
+- baseline is the most aggressive,
+- S1 is much more selective,
+- S2 is stricter,
+- S3 is the most selective and context-aware.
 
-but now S3 was **not simply more restrictive in hours** than S2.  
-Instead, S3 was **more nuanced in action intensity**:
-- same active hours as S2
-- lower average action intensity
-- more refined use of `RELAXED_1` and `RELAXED_2`
-
-This made the intelligent control section stronger, because S3 now looked like a **refined supervisory controller**, not only the strictest one.
+This is exactly the pattern expected from a conservative supervisory controller.
 
 ---
 
-## 26. Monthly control behavior
+## 25. Controller-oriented validation
 
-Monthly reduction plots showed:
-- baseline acts broadly across months
-- S1 still acts across several months
-- S2 and S3 become much narrower
-
-With internal temperature included:
-- month 5 remained the strongest month
-- months 6–8 retained moderate activity
-- month 9 dropped out for S2 and S3
-
-This reinforced that intervention opportunities are:
-- seasonal,
-- bounded,
-- and concentrated in a narrow set of contexts.
-
----
-
-## 27. Controller-oriented validation
-
-We developed a full controller validation package including:
+The intelligent-control validation package included:
 
 ### Baseline comparison
-- baseline vs S1 / S2 / S3
+- `B0` vs `S1` vs `S2` vs `S3`
 
 ### Controller metrics
-- active control hours
-- action intensity
-- risk-state distribution
-- avoided high-risk hours
-- selectivity
+Validation table showed:
 
-### Proxy sensitivity
-- comparing `179`, `188`, `80`, `90`
+- `B0`
+  - `active_control_hours = 497`
+  - `relaxed_1_hours = 497`
+  - `mean_action_intensity_pct = 5.0`
+  - `low_risk_action_frac = 0.098592`
 
-### Cluster-number sensitivity
-- comparing `K = 2, 3, 4, 5`
+- `S1`
+  - `active_control_hours = 106`
+  - `relaxed_2_hours = 106`
+  - `mean_action_intensity_pct = 10.0`
+  - `low_risk_action_frac = 0.188679`
 
-### Threshold / persistence / cap sensitivity
-For S3, tested:
-- residual quantiles `0.50`, `0.75`, `0.90`
-- persistence `1`, `2`, `3`
-- cap `0.05`, `0.10`
+- `S2`
+  - `active_control_hours = 25`
+  - `relaxed_2_hours = 25`
+  - `mean_action_intensity_pct = 10.0`
+  - `low_risk_action_frac = 0.240000`
 
-### Main S3 sensitivity results
-Examples:
+- `S3`
+  - `active_control_hours = 6`
+  - `relaxed_2_hours = 6`
+  - `mean_action_intensity_pct = 10.0`
+  - `low_risk_action_frac = 1.000000`
 
-At `0.50`, `1h`, `0.05`:
-- **441 hours**
-- **0.449991%**
+This final version shows S3 acting only in `LOW_RISK` contexts, which is a very strong supervisory result. :contentReference[oaicite:22]{index=22}
 
-At `0.75`, `2h`, `0.05`:
-- **47 hours**
-- **0.066288%**
+### S3 sensitivity analysis
+Selected final S3 sensitivity results:
 
-At `0.90`, `3h`, `0.05`:
-- **0 hours**
-- **0.000000%**
+- at `0.50`, `1h`, `0.05`:
+  - **16 hours**
+  - **0.025262%**
 
-### Interpretation
-This showed exactly what a trustworthy bounded control estimate should show:
-- looser rules give bigger opportunities,
-- stricter rules shrink or eliminate them,
-- the selected middle setting remains conservative but non-zero.
+- at `0.50`, `2h`, `0.05`:
+  - **10 hours**
+  - **0.015223%**
+
+- at `0.75`, `2h`, `0.05`:
+  - **6 hours**
+  - **0.010249%**
+
+- at `0.90`, `2h`, `0.05`:
+  - **0 hours**
+  - **0.000000%**
+
+This again shows that:
+- looser settings increase the opportunity,
+- stricter settings shrink or eliminate it,
+- and the final selected middle setting remains small but non-zero.
 
 ---
 
-## 28. What we decided not to keep as main evidence
+## 26. What was not retained as main evidence
 
 ### 2026 extension
-A partial 2026 extension was explored, but it was not retained as a main thesis result because:
-- 2026 currently ends at **2026-04-15 21:00:00**
-- warm-season validation is incomplete
-- forecast transfer to early 2026 was weak
+A partial 2026 extension was explored, but not retained as a main thesis result because:
+- 2026 ends at **2026-04-15 21:00:00**
+- warm-season comparison is incomplete
+- model transfer was weak
 
 ### Dwell-time validation
-A dwell-time check was implemented, but it inflated activity unrealistically:
-- baseline: **497 → 1978**
-- S2: **25 → 1308**
+A dwell-time check was implemented, but it inflated active hours unrealistically and was therefore not retained as final evidence.
 
-So it was not retained as main evidence without further correction.
+### Internal-temperature main branch
+The internal temperature proxy was explored, but should not remain in the final main story because it was later judged too close to external weather and not sufficiently distinct as a final core predictor.
 
 ---
 
-## 29. How we decided to talk about “accuracy”
-
-We clarified that:
+## 27. How accuracy and trust are framed
 
 ### Forecasting
-can be evaluated by **accuracy**, because there is a true observed target.
-
-Best metrics:
+Forecasting quality is reported using:
 - MAE
 - RMSE
 - CVRMSE (%)
@@ -809,41 +906,21 @@ Best metrics:
 - R²
 
 ### Intelligent control
-should **not** be described with “accuracy,” because there is no ground-truth optimal action sequence.
+Intelligent control should **not** be described as having exact accuracy, because there is no ground-truth optimal action sequence.
 
-Instead, control quality should be described through:
-- effectiveness
-- selectivity
-- risk-awareness
-- robustness
+Instead, control quality is justified through:
+- effectiveness,
+- selectivity,
+- risk-awareness,
+- and robustness.
 
-This became an important defense point.
-
----
-
-## 30. Final interpretation of trust and quality
-
-The final logic we agreed on was:
-
-- **forecasting quality** is trusted because of strong out-of-sample and normalized error metrics
-- **control credibility** is trusted because of layered validation:
-  - baseline comparison
-  - risk filtering
-  - proxy sensitivity
-  - clustering sensitivity
-  - parameter sensitivity
-
-The key defense sentence became:
+The key defense sentence is:
 
 > Forecast accuracy is measured directly; control trustworthiness is defended through conservativeness, selectivity, and robustness.
 
 ---
 
-## 6-hours ahead sensitivity check since literature describes that 
-
-A limited six-hour-ahead sensitivity check was performed to test whether the literature’s horizon-sensitive expectation was visible in the present dataset. Although the six-hour machine-learning models did not outperform the naive benchmark under rolling-origin validation, the feature-importance pattern suggested that contextual variables, especially the internal temperature proxy, become relatively more important at the longer horizon. For this reason, the final thesis remains centered on the one-hour-ahead case, while the six-hour result is treated as a supporting sensitivity check rather than a core analytical branch.
-
-## 31. Final overall conclusion
+## 28. Final overall conclusion
 
 The final thesis supports these conclusions:
 
@@ -853,17 +930,17 @@ The final thesis supports these conclusions:
 4. The site does **not** show evidence of large-scale systematic annual overcooling.
 5. Raw warm-season positive residuals exist, but the realistic intervention margin becomes very small under conservative supervisory filters.
 6. Intelligent control can be formulated credibly as **forecast-informed intelligent control simulation** under real telemetry constraints.
-7. The addition of `internal_temp_proxy` improved the contextual design and made the final intelligent control section stronger.
-8. The final intelligent control family is:
+7. The final intelligent-control family is:
    - baseline simple threshold
    - forecast-only
    - load-aware
    - load-and-mode-aware
-9. The strongest final controller, **S3**, acts in a small and refined set of hours and uses more nuanced action intensity than S2.
+8. The strongest final controller, **S3**, acts in a very small and carefully filtered set of hours and only in `LOW_RISK` contexts in the final validation view.
+9. The bidirectional benchmark extension does not support a strong claim of systematic insufficient cooling.
 10. The final substantive conclusion is not that the site hides large reducible cooling waste, but that it contains a **small, bounded, and defensibly identifiable set of forecast-informed intelligent control opportunities**.
 
 ---
 
-## 32. Final thesis positioning
+## 29. Final thesis positioning
 
 The thesis develops a defensible framework that bridges reconstructed cooling-demand telemetry, forecast-based benchmarking, and intelligent control simulation in a real telecom central office. It shows that broad reducible cooling demand is not evident at the selected site, but that a small number of bounded and context-aware intervention opportunities can still be identified using forecast-informed intelligent control logic.
